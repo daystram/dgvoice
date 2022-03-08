@@ -34,8 +34,7 @@ const (
 )
 
 var (
-	speakers    map[uint32]*gopus.Decoder
-	opusEncoder *gopus.Encoder
+	speakers map[uint32]*gopus.Decoder
 )
 
 // OnError gets called by dgvoice when an error is encountered.
@@ -57,17 +56,13 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 		return
 	}
 
-	var err error
-
-	opusEncoder, err = gopus.NewEncoder(frameRate, channels, gopus.Audio)
-
+	opusEncoder, err := gopus.NewEncoder(frameRate, channels, gopus.Audio)
 	if err != nil {
 		OnError("NewEncoder Error", err)
 		return
 	}
 
 	for {
-
 		// read pcm from chan, exit if channel is closed.
 		recv, ok := <-pcm
 		if !ok {
