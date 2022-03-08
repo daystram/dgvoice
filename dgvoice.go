@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"sync"
 
 	"github.com/bwmarrin/discordgo"
 	"layeh.com/gopus"
@@ -37,7 +36,6 @@ const (
 var (
 	speakers    map[uint32]*gopus.Decoder
 	opusEncoder *gopus.Encoder
-	mu          sync.Mutex
 )
 
 // OnError gets called by dgvoice when an error is encountered.
@@ -73,7 +71,6 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 		// read pcm from chan, exit if channel is closed.
 		recv, ok := <-pcm
 		if !ok {
-			OnError("PCM Channel closed", nil)
 			return
 		}
 
@@ -84,7 +81,7 @@ func SendPCM(v *discordgo.VoiceConnection, pcm <-chan []int16) {
 			return
 		}
 
-		if v.Ready == false || v.OpusSend == nil {
+		if !v.Ready || v.OpusSend == nil {
 			// OnError(fmt.Sprintf("Discordgo not ready for opus packets. %+v : %+v", v.Ready, v.OpusSend), nil)
 			// Sending errors here might not be suited
 			return
@@ -104,7 +101,7 @@ func ReceivePCM(v *discordgo.VoiceConnection, c chan *discordgo.Packet) {
 	var err error
 
 	for {
-		if v.Ready == false || v.OpusRecv == nil {
+		if !v.Ready || v.OpusRecv == nil {
 			OnError(fmt.Sprintf("Discordgo not to receive opus packets. %+v : %+v", v.Ready, v.OpusSend), nil)
 			return
 		}
@@ -122,7 +119,7 @@ func ReceivePCM(v *discordgo.VoiceConnection, c chan *discordgo.Packet) {
 		if !ok {
 			speakers[p.SSRC], err = gopus.NewDecoder(48000, 2)
 			if err != nil {
-				OnError("error creating opus decoder", err)
+				OnError("Error creating opus decoder", err)
 				continue
 			}
 		}
@@ -160,7 +157,9 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string, stop <-chan bo
 	}
 
 	// prevent memory leak from residual ffmpeg streams
-	defer run.Process.Kill()
+	defer func() {
+		_ = run.Process.Kill()
+	}()
 
 	//when stop is sent, kill ffmpeg
 	go func() {
@@ -199,7 +198,7 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string, stop <-chan bo
 			return
 		}
 		if err != nil {
-			OnError("error reading from ffmpeg stdout", err)
+			OnError("Error reading from ffmpeg stdout", err)
 			return
 		}
 
