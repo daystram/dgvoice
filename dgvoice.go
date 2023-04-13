@@ -9,7 +9,7 @@
 package dgvoice
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -133,30 +133,24 @@ func ReceivePCM(v *discordgo.VoiceConnection, c chan *discordgo.Packet) {
 // Discord voice server/channel.  voice websocket and udp socket
 // must already be setup before this will work.
 func PlayAudioFile(v *discordgo.VoiceConnection, filename string, stop <-chan bool) {
-
 	// Create a shell command "object" to run.
 	run := exec.Command("ffmpeg", "-i", filename, "-f", "s16le", "-ar", strconv.Itoa(frameRate), "-ac", strconv.Itoa(channels), "pipe:1")
-	ffmpegout, err := run.StdoutPipe()
-	if err != nil {
-		OnError("StdoutPipe Error", err)
-		return
-	}
+	var ffmpegbuf bytes.Buffer
+	run.Stdout = &ffmpegbuf
 
-	ffmpegbuf := bufio.NewReaderSize(ffmpegout, 16384)
-
-	// Starts the ffmpeg command
-	err = run.Start()
+	// Start the ffmpeg command
+	err := run.Run() // blocking
 	if err != nil {
 		OnError("RunStart Error", err)
 		return
 	}
 
-	// prevent memory leak from residual ffmpeg streams
+	// Prevent memory leak from residual ffmpeg streams
 	defer func() {
 		_ = run.Process.Kill()
 	}()
 
-	//when stop is sent, kill ffmpeg
+	// When stop is sent, kill ffmpeg
 	go func() {
 		<-stop
 		err = run.Process.Kill()
@@ -188,7 +182,7 @@ func PlayAudioFile(v *discordgo.VoiceConnection, filename string, stop <-chan bo
 	for {
 		// read data from ffmpeg stdout
 		audiobuf := make([]int16, frameSize*channels)
-		err = binary.Read(ffmpegbuf, binary.LittleEndian, &audiobuf)
+		err = binary.Read(&ffmpegbuf, binary.LittleEndian, &audiobuf)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
 			return
 		}
